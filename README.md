@@ -6,26 +6,20 @@ Backend-ul DinSat, pregătit pentru **Node.js și JavaScript**, cu Express ca fr
 
 ## Organizare
 
-Folosim un monolit modular inspirat de Clean Architecture. Fiecare modul separă regulile de business de HTTP, baza de date și furnizorii externi.
+Folosim un monolit modular inspirat de Clean Architecture, organizat mai întâi pe straturi. Directoarele `domain`, `application`, `infrastructure` și `presentation` apar o singură dată în `src/`. În fiecare strat, `features/` grupează fișierele după funcționalitate.
 
 ```text
 din_sat_api/
 ├── src/
 │   ├── app/
 │   │   ├── config/                 # Configurația aplicației și variabilele de mediu
-│   │   ├── container/              # Construirea și injectarea dependențelor
-│   │   └── http/
-│   │       └── middlewares/        # Sesiune, acces, validare și tratarea erorilor HTTP
-│   ├── modules/
-│   │   ├── auth/
-│   │   ├── catalog/
-│   │   ├── producers/
-│   │   ├── orders/
-│   │   ├── pickup/
-│   │   ├── dashboard/
-│   │   ├── ai/
-│   │   └── billing/
+│   │   └── container/              # Construirea și injectarea dependențelor
+│   ├── domain/
+│   │   └── features/               # Entități, valori și politici, grupate pe funcționalități
+│   ├── application/
+│   │   └── features/               # Cazuri de utilizare, DTO-uri și porturi
 │   ├── infrastructure/
+│   │   ├── features/               # Repository-uri concrete și mapări de persistență
 │   │   ├── persistence/
 │   │   │   ├── connections/        # Adaptorul de conectare la baza de date aleasă
 │   │   │   └── transactions/       # Implementarea tranzacțiilor / Unit of Work
@@ -35,6 +29,10 @@ din_sat_api/
 │   │   │   └── storage/
 │   │   ├── security/               # Implementări pentru parole și sesiuni
 │   │   └── logging/
+│   ├── presentation/
+│   │   ├── features/               # Rute, controllere, validări și mapări HTTP
+│   │   └── http/
+│   │       └── middlewares/        # Sesiune, acces, validare și tratarea erorilor HTTP
 │   └── shared/
 │       ├── errors/                 # Erori comune, independente de HTTP
 │       └── utils/                  # Utilitare independente de framework
@@ -48,24 +46,30 @@ din_sat_api/
     └── fixtures/
 ```
 
-Fiecare director din `src/modules/` conține aceeași structură:
+Fiecare director `features/` din cele patru straturi conține aceleași funcționalități:
 
 ```text
-orders/                            # Exemplu valabil pentru fiecare modul
-├── domain/                        # Entități, valori, politici și erori de business
-├── application/                   # Cazuri de utilizare, DTO-uri și porturi
-├── infrastructure/                # Repository-uri concrete și mapări de persistență
-└── presentation/                  # Rute, controllere, validări și mapări HTTP
+features/
+├── auth/
+├── catalog/
+├── producers/
+├── orders/
+├── pickup/
+├── dashboard/
+├── ai/
+└── billing/
 ```
+
+De exemplu, autentificarea are modelele și regulile în `src/domain/features/auth/`, cazurile de utilizare și porturile în `src/application/features/auth/`, adaptoarele în `src/infrastructure/features/auth/` și rutele / controllerele în `src/presentation/features/auth/`. Fișierele necesare vor fi adăugate în directorul funcționalității din stratul corespunzător; momentan fiecare conține doar `.gitkeep`.
 
 ## Reguli de dependență
 
 - `domain` nu importă Express, drivere DB sau SDK-uri externe.
 - `application` folosește domeniul și declară porturile necesare: repository-uri, furnizori și tranzacții. În JavaScript, porturile pot fi contracte documentate pentru obiecte sau funcții.
-- `infrastructure` implementează porturile. Adaptoarele specifice unui modul stau în modul; conexiunile și furnizorii comuni stau în infrastructura comună.
+- `infrastructure` implementează porturile. Adaptoarele specifice unui modul stau în `infrastructure/features/<nume>/`; conexiunile și furnizorii comuni stau în celelalte directoare ale infrastructurii.
 - `presentation` traduce cererea HTTP în date pentru un caz de utilizare și rezultatul în răspuns HTTP. Regulile de business rămân în straturile interioare.
 - `app` configurează serverul, montează rutele și conectează implementările prin injectarea dependențelor.
-- Modulele colaborează prin cazuri de utilizare sau porturi explicite, fără importuri directe din infrastructura altui modul. `shared` conține doar elemente comune, fără dependențe de module.
+- Funcționalitățile colaborează prin cazuri de utilizare sau porturi explicite, fără importuri directe din infrastructura altei funcționalități. `shared` conține doar elemente comune, independente de framework și fără dependențe de funcționalități.
 
 Fluxul unei cereri: rută → controller → caz de utilizare → domeniu / port de repository. Implementarea portului este injectată din `app/container`.
 
