@@ -1,0 +1,1039 @@
+openapi: '3.1.0'
+info:
+  title: 'DinSat Marketplace API'
+  version: '0.1.0'
+  description: 'Canonical contract. Cookie sessions, session-bound CSRF for all writes, explicit origin checks. Development data is volatile. Registration permits only buyer and producer. Monetary prices are decimal strings in MDL; v1 quantities are integers. Demo payment is at pickup.'
+servers:
+  - url: '/api/v1'
+paths:
+  /health:
+    get:
+      summary: 'Health and persistence mode'
+      security: []
+      responses:
+        '200':
+          description: 'Success'
+          content:
+            application/json:
+              schema:
+                type: 'object'
+                properties:
+                  status:
+                    const: 'ok'
+                  mode:
+                    enum:
+                      - 'demo'
+                      - 'connected'
+                required:
+                  - 'status'
+                  - 'mode'
+                additionalProperties: false
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /auth/session:
+    get:
+      summary: 'Read session and obtain CSRF token; creates anonymous session when needed'
+      security: []
+      responses:
+        '200':
+          description: 'Success'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /auth/register:
+    post:
+      summary: 'Register buyer or producer and rotate session'
+      security: []
+      responses:
+        '201':
+          description: 'Success'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Registration'
+      parameters:
+        - name: 'X-CSRF-Token'
+          in: 'header'
+          required: true
+          schema:
+            type: 'string'
+  /auth/login:
+    post:
+      summary: 'Authenticate and rotate session and CSRF token'
+      security: []
+      responses:
+        '200':
+          description: 'Success'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Credentials'
+      parameters:
+        - name: 'X-CSRF-Token'
+          in: 'header'
+          required: true
+          schema:
+            type: 'string'
+  /auth/logout:
+    post:
+      summary: 'Destroy server-side session and clear cookie'
+      security: []
+      responses:
+        '204':
+          description: 'Success, no body'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      parameters:
+        - name: 'X-CSRF-Token'
+          in: 'header'
+          required: true
+          schema:
+            type: 'string'
+  /products:
+    get:
+      summary: 'Filter and paginate products'
+      security: []
+      responses:
+        '200':
+          description: 'Success'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductPage'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      parameters:
+        - name: 'q'
+          in: 'query'
+          required: false
+          schema:
+            type: 'string'
+            maxLength: 100
+        - name: 'category'
+          in: 'query'
+          required: false
+          schema:
+            type: 'string'
+            enum:
+              - 'legume'
+              - 'fructe'
+              - 'lactate'
+              - 'oua'
+              - 'miere'
+              - 'camara'
+        - name: 'locality'
+          in: 'query'
+          required: false
+          schema:
+            type: 'string'
+            maxLength: 80
+        - name: 'producerId'
+          in: 'query'
+          required: false
+          schema:
+            type: 'string'
+            minLength: 1
+            maxLength: 80
+        - name: 'sort'
+          in: 'query'
+          required: false
+          schema:
+            enum:
+              - 'recommended'
+              - 'price-asc'
+              - 'price-desc'
+            default: 'recommended'
+        - name: 'page'
+          in: 'query'
+          required: false
+          schema:
+            type: 'integer'
+            minimum: 1
+            maximum: 10000
+            default: 1
+        - name: 'pageSize'
+          in: 'query'
+          required: false
+          schema:
+            type: 'integer'
+            minimum: 1
+            maximum: 50
+            default: 12
+    post:
+      summary: 'Publish product; producerId is taken from authenticated producer'
+      security:
+        - sessionCookie: []
+      responses:
+        '201':
+          description: 'Success'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductInput'
+      parameters:
+        - name: 'X-CSRF-Token'
+          in: 'header'
+          required: true
+          schema:
+            type: 'string'
+  '/products/{id}':
+    get:
+      summary: 'Get product details'
+      security: []
+      responses:
+        '200':
+          description: 'Success'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      parameters:
+        - name: 'id'
+          in: 'path'
+          required: true
+          schema:
+            type: 'string'
+            minLength: 1
+            maxLength: 80
+  /producers:
+    get:
+      summary: 'List public producer profiles'
+      security: []
+      responses:
+        '200':
+          description: 'Success'
+          content:
+            application/json:
+              schema:
+                type: 'object'
+                properties:
+                  items:
+                    type: 'array'
+                    items:
+                      $ref: '#/components/schemas/Producer'
+                required:
+                  - 'items'
+                additionalProperties: false
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+  /pickup-slots:
+    get:
+      summary: 'Future available pickup slots for a producer'
+      security: []
+      responses:
+        '200':
+          description: 'Success'
+          content:
+            application/json:
+              schema:
+                type: 'object'
+                properties:
+                  items:
+                    type: 'array'
+                    items:
+                      $ref: '#/components/schemas/Pickup'
+                required:
+                  - 'items'
+                additionalProperties: false
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      parameters:
+        - name: 'producerId'
+          in: 'query'
+          required: true
+          schema:
+            type: 'string'
+            minLength: 1
+            maxLength: 80
+    post:
+      summary: 'Create pickup slot for authenticated producer'
+      security:
+        - sessionCookie: []
+      responses:
+        '201':
+          description: 'Success'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pickup'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PickupInput'
+      parameters:
+        - name: 'X-CSRF-Token'
+          in: 'header'
+          required: true
+          schema:
+            type: 'string'
+  /orders:
+    get:
+      summary: 'List orders owned by the buyer or producer'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: 'Success'
+          content:
+            application/json:
+              schema:
+                type: 'object'
+                properties:
+                  items:
+                    type: 'array'
+                    items:
+                      $ref: '#/components/schemas/Order'
+                required:
+                  - 'items'
+                additionalProperties: false
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+    post:
+      summary: 'Checkout with server prices and stock; identical retries return the same order'
+      security:
+        - sessionCookie: []
+      responses:
+        '201':
+          description: 'Success'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Checkout'
+      parameters:
+        - name: 'Idempotency-Key'
+          in: 'header'
+          required: true
+          schema:
+            type: 'string'
+            pattern: '^[a-zA-Z0-9-]{16,100}$'
+        - name: 'X-CSRF-Token'
+          in: 'header'
+          required: true
+          schema:
+            type: 'string'
+  '/orders/{id}/status':
+    patch:
+      summary: 'Producer advances status; either participant may cancel new/confirmed orders'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: 'Success'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusInput'
+      parameters:
+        - name: 'id'
+          in: 'path'
+          required: true
+          schema:
+            type: 'string'
+            minLength: 1
+            maxLength: 80
+        - name: 'X-CSRF-Token'
+          in: 'header'
+          required: true
+          schema:
+            type: 'string'
+components:
+  securitySchemes:
+    sessionCookie:
+      type: 'apiKey'
+      in: 'cookie'
+      name: 'dinsat.sid'
+  schemas:
+    User:
+      type: 'object'
+      properties:
+        id:
+          type: 'string'
+          minLength: 1
+          maxLength: 80
+        name:
+          type: 'string'
+        email:
+          type: 'string'
+          format: 'email'
+        role:
+          type: 'string'
+          enum:
+            - 'buyer'
+            - 'producer'
+      required:
+        - 'id'
+        - 'name'
+        - 'email'
+        - 'role'
+      additionalProperties: false
+    Error:
+      type: 'object'
+      properties:
+        code:
+          type: 'string'
+        message:
+          type: 'string'
+        fieldErrors:
+          type: 'object'
+          additionalProperties:
+            type: 'string'
+        requestId:
+          type: 'string'
+          format: 'uuid'
+      required:
+        - 'code'
+        - 'message'
+        - 'requestId'
+      additionalProperties: false
+    Credentials:
+      type: 'object'
+      properties:
+        email:
+          type: 'string'
+          format: 'email'
+          maxLength: 254
+        password:
+          type: 'string'
+          minLength: 1
+          maxLength: 128
+      required:
+        - 'email'
+        - 'password'
+      additionalProperties: false
+    Registration:
+      type: 'object'
+      properties:
+        name:
+          type: 'string'
+          minLength: 2
+          maxLength: 80
+        email:
+          type: 'string'
+          format: 'email'
+          maxLength: 254
+        password:
+          type: 'string'
+          minLength: 12
+          maxLength: 128
+        role:
+          type: 'string'
+          enum:
+            - 'buyer'
+            - 'producer'
+      required:
+        - 'name'
+        - 'email'
+        - 'password'
+        - 'role'
+      additionalProperties: false
+    Session:
+      type: 'object'
+      properties:
+        user:
+          oneOf:
+            - $ref: '#/components/schemas/User'
+            - type: 'null'
+        csrfToken:
+          type: 'string'
+      required:
+        - 'user'
+        - 'csrfToken'
+      additionalProperties: false
+    Producer:
+      type: 'object'
+      properties:
+        id:
+          type: 'string'
+          minLength: 1
+          maxLength: 80
+        name:
+          type: 'string'
+        locality:
+          type: 'string'
+        description:
+          type: 'string'
+      required:
+        - 'id'
+        - 'name'
+        - 'locality'
+        - 'description'
+      additionalProperties: false
+    ProductInput:
+      type: 'object'
+      properties:
+        title:
+          type: 'string'
+          minLength: 3
+          maxLength: 100
+        description:
+          type: 'string'
+          minLength: 10
+          maxLength: 2000
+        category:
+          type: 'string'
+          enum:
+            - 'legume'
+            - 'fructe'
+            - 'lactate'
+            - 'oua'
+            - 'miere'
+            - 'camara'
+        unit:
+          type: 'string'
+          enum:
+            - 'kg'
+            - 'buc'
+            - 'l'
+        priceAmount:
+          type: 'string'
+          pattern: "^\\d{1,6}\\.\\d{2}$"
+          example: '35.00'
+        availableQuantity:
+          type: 'integer'
+          minimum: 0
+          maximum: 100000
+        imageUrl:
+          type: 'string'
+          format: 'uri'
+          pattern: '^https://'
+      required:
+        - 'title'
+        - 'description'
+        - 'category'
+        - 'unit'
+        - 'priceAmount'
+        - 'availableQuantity'
+        - 'imageUrl'
+      additionalProperties: false
+    PickupInput:
+      type: 'object'
+      properties:
+        startsAt:
+          type: 'string'
+          format: 'date-time'
+        endsAt:
+          type: 'string'
+          format: 'date-time'
+        location:
+          type: 'string'
+          minLength: 5
+          maxLength: 200
+        capacity:
+          type: 'integer'
+          minimum: 1
+          maximum: 1000
+      required:
+        - 'startsAt'
+        - 'endsAt'
+        - 'location'
+        - 'capacity'
+      additionalProperties: false
+      description: 'Future start within 180 days; end after start, maximum duration 8 hours.'
+    Checkout:
+      type: 'object'
+      properties:
+        items:
+          type: 'array'
+          minItems: 1
+          maxItems: 50
+          items:
+            type: 'object'
+            properties:
+              productId:
+                type: 'string'
+                minLength: 1
+                maxLength: 80
+              quantity:
+                type: 'integer'
+                minimum: 1
+                maximum: 1000
+            required:
+              - 'productId'
+              - 'quantity'
+            additionalProperties: false
+          description: 'Unique product IDs; all products belong to one producer. Quantities are whole units.'
+        pickupSlotId:
+          type: 'string'
+          minLength: 1
+          maxLength: 80
+      required:
+        - 'items'
+        - 'pickupSlotId'
+      additionalProperties: false
+    OrderItem:
+      type: 'object'
+      properties:
+        productId:
+          type: 'string'
+          minLength: 1
+          maxLength: 80
+        producerId:
+          type: 'string'
+          minLength: 1
+          maxLength: 80
+        title:
+          type: 'string'
+        unit:
+          type: 'string'
+          enum:
+            - 'kg'
+            - 'buc'
+            - 'l'
+        priceAmount:
+          type: 'string'
+          pattern: "^\\d{1,6}\\.\\d{2}$"
+          example: '35.00'
+        quantity:
+          type: 'integer'
+          minimum: 1
+      required:
+        - 'productId'
+        - 'producerId'
+        - 'title'
+        - 'unit'
+        - 'priceAmount'
+        - 'quantity'
+      additionalProperties: false
+    StatusInput:
+      type: 'object'
+      properties:
+        status:
+          type: 'string'
+          enum:
+            - 'confirmed'
+            - 'preparing'
+            - 'ready'
+            - 'completed'
+            - 'cancelled'
+      required:
+        - 'status'
+      additionalProperties: false
+    Product:
+      type: 'object'
+      properties:
+        title:
+          type: 'string'
+          minLength: 3
+          maxLength: 100
+        description:
+          type: 'string'
+          minLength: 10
+          maxLength: 2000
+        category:
+          type: 'string'
+          enum:
+            - 'legume'
+            - 'fructe'
+            - 'lactate'
+            - 'oua'
+            - 'miere'
+            - 'camara'
+        unit:
+          type: 'string'
+          enum:
+            - 'kg'
+            - 'buc'
+            - 'l'
+        priceAmount:
+          type: 'string'
+          pattern: "^\\d{1,6}\\.\\d{2}$"
+          example: '35.00'
+        availableQuantity:
+          type: 'integer'
+          minimum: 0
+          maximum: 100000
+        imageUrl:
+          type: 'string'
+          format: 'uri'
+          pattern: '^https://'
+        id:
+          type: 'string'
+          minLength: 1
+          maxLength: 80
+        producerId:
+          type: 'string'
+          minLength: 1
+          maxLength: 80
+        currency:
+          const: 'MDL'
+        badge:
+          type: 'string'
+        producer:
+          $ref: '#/components/schemas/Producer'
+      required:
+        - 'title'
+        - 'description'
+        - 'category'
+        - 'unit'
+        - 'priceAmount'
+        - 'availableQuantity'
+        - 'imageUrl'
+        - 'id'
+        - 'producerId'
+        - 'currency'
+        - 'producer'
+      additionalProperties: false
+    Pickup:
+      type: 'object'
+      properties:
+        startsAt:
+          type: 'string'
+          format: 'date-time'
+        endsAt:
+          type: 'string'
+          format: 'date-time'
+        location:
+          type: 'string'
+          minLength: 5
+          maxLength: 200
+        capacity:
+          type: 'integer'
+          minimum: 1
+          maximum: 1000
+        id:
+          type: 'string'
+          minLength: 1
+          maxLength: 80
+        producerId:
+          type: 'string'
+          minLength: 1
+          maxLength: 80
+        timeZone:
+          const: 'Europe/Chisinau'
+      required:
+        - 'startsAt'
+        - 'endsAt'
+        - 'location'
+        - 'capacity'
+        - 'id'
+        - 'producerId'
+        - 'timeZone'
+      additionalProperties: false
+    Order:
+      type: 'object'
+      properties:
+        id:
+          type: 'string'
+          minLength: 1
+          maxLength: 80
+        buyerId:
+          type: 'string'
+          minLength: 1
+          maxLength: 80
+        producerId:
+          type: 'string'
+          minLength: 1
+          maxLength: 80
+        items:
+          type: 'array'
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        pickup:
+          $ref: '#/components/schemas/Pickup'
+        totalAmount:
+          type: 'string'
+          pattern: "^\\d+\\.\\d{2}$"
+        currency:
+          const: 'MDL'
+        status:
+          type: 'string'
+          enum:
+            - 'new'
+            - 'confirmed'
+            - 'preparing'
+            - 'ready'
+            - 'completed'
+            - 'cancelled'
+        createdAt:
+          type: 'string'
+          format: 'date-time'
+      required:
+        - 'id'
+        - 'buyerId'
+        - 'producerId'
+        - 'items'
+        - 'pickup'
+        - 'totalAmount'
+        - 'currency'
+        - 'status'
+        - 'createdAt'
+      additionalProperties: false
+    ProductPage:
+      type: 'object'
+      properties:
+        items:
+          type: 'array'
+          items:
+            $ref: '#/components/schemas/Product'
+        total:
+          type: 'integer'
+        page:
+          type: 'integer'
+        pageSize:
+          type: 'integer'
+      required:
+        - 'items'
+        - 'total'
+        - 'page'
+        - 'pageSize'
+      additionalProperties: false
+  responses:
+    Error400:
+      description: 'Invalid input'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Error401:
+      description: 'Authentication required or invalid credentials'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Error403:
+      description: 'Forbidden or invalid CSRF/origin'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Error404:
+      description: 'Resource not found'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Error409:
+      description: 'State, stock, capacity or idempotency conflict'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Error429:
+      description: 'Rate limited'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Error500:
+      description: 'Internal server error'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
