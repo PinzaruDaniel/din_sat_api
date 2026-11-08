@@ -48,6 +48,24 @@ const checkout = {
   pickupSlotId: 'producer-1-slot-1',
 };
 
+test('readiness fails safely when persistence is unavailable while liveness stays healthy', async () => {
+  const unavailable = createApp({
+    services: createServices({ repositories, passwords }),
+    config: {
+      sessionSecret: 'test-secret-with-at-least-thirty-two-characters',
+      demo: true,
+      origin,
+    },
+    checkReadiness: async () => {
+      throw new Error('private database failure');
+    },
+  });
+  const ready = await request(unavailable).get('/api/v1/ready').expect(503);
+  assert.deepEqual(ready.body, { status: 'unavailable' });
+  await request(unavailable).get('/api/v1/health').expect(200);
+  await request(app).get('/api/v1/ready').expect(200);
+});
+
 test('session cookie is HttpOnly, session rotates at login, logout revokes it', async () => {
   const client = await register();
   assert.equal(client.user.passwordHash, undefined);

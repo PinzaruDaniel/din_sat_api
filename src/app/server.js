@@ -1,43 +1,33 @@
-import { randomBytes } from 'node:crypto';
 import { createApp } from './createApp.js';
-import { createServices } from './container/createServices.js';
-import { createDemoDatabase } from '../infrastructure/persistence/connections/createDemoDatabase.js';
-import { createPasswords } from '../infrastructure/security/passwords.js';
-const production = process.env.NODE_ENV === 'production';
-const demo =
-  process.env.DEMO_MODE === 'true' ||
-  (!production && process.env.DEMO_MODE !== 'false');
-if (!demo || production)
-  throw new Error(
-    'Connect the external repository adapters and durable session store before starting outside demo mode. See docs/architecture/persistence.md.',
+import { loadConfig } from './config/loadConfig.js';
+import { createRuntime } from './container/createRuntime.js';
+
+const config = loadConfig();
+const runtime = await createRuntime(config);
+const app = createApp({ ...runtime, config });
+const server = app.listen(config.port, config.host, () => {
+  console.info(
+    `DinSat API listening on port ${config.port} (${config.demo ? 'demo: volatile data' : 'PostgreSQL: persistent data'}).`,
   );
-const passwords = await createPasswords();
-const repositories = createDemoDatabase();
-for (const role of ['buyer', 'producer']) {
-  await repositories.users.create({
-    name: role === 'buyer' ? 'Ana Popescu' : 'Livada Anei',
-    email: `${role}@dinsat.demo`,
-    role,
-    passwordHash: await passwords.hash('DinSatDemo2026!'),
+});
+server.on('error', async () => {
+  console.error('API could not listen on the configured interface and port.');
+  await runtime.close();
+  process.exitCode = 1;
+});
+let stopping = false;
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, () => {
+    if (stopping) return;
+    stopping = true;
+    const deadline = setTimeout(() => process.exit(1), 10000);
+    deadline.unref();
+    server.close(async () => {
+      try {
+        await runtime.close();
+      } finally {
+        clearTimeout(deadline);
+      }
+    });
   });
 }
-const services = createServices({ repositories, passwords });
-const app = createApp({
-  services,
-  config: {
-    production,
-    demo,
-    origin: process.env.APP_ORIGIN ?? 'http://localhost:5173',
-    sessionSecret:
-      process.env.SESSION_SECRET ?? randomBytes(48).toString('hex'),
-  },
-});
-const server = app.listen(Number(process.env.PORT ?? 3001), '127.0.0.1', () =>
-  console.info(
-    'DinSat API: http://localhost:3001/api/v1 — DEMO: data resets on restart.',
-  ),
-);
-for (const signal of ['SIGTERM', 'SIGINT'])
-  process.on(signal, () => {
-    server.close();
-  });

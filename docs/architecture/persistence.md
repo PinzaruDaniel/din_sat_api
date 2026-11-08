@@ -1,6 +1,23 @@
 # Conectarea bazei de date externe
 
-Baza de date, schema și locul de hosting se aleg separat. Nu există ORM, migrații sau presupuneri despre un furnizor în această implementare. `createDemoDatabase()` este un adaptor de development, cu date volatile. Nu îl folosi în producție.
+Persistența este implementată pe PostgreSQL prin driverul `pg`, fără ORM. Aplicația este conectată la proiectul Neon `late-cloud-11138544`, ramura `production`; API-ul și interfața sunt pornite local. Repository-urile folosesc SQL și porturile de mai jos, astfel că pot folosi în continuare și un PostgreSQL local. `createDemoDatabase()` rămâne un adaptor opțional de development, cu date volatile.
+
+## Schema și inițializarea
+
+`database/migrations/001_initial.sql` creează `users`, `producers`, `products`, `pickup_slots`, `orders`, `order_items`, `idempotency_requests` și `sessions`. `schema_migrations` păstrează versiunile și checksum-urile. Migrațiile aplicate nu se editează; se adaugă un nou fișier SQL versionat. Aplicarea este serializată și atomică.
+
+```bash
+npm run db:migrate
+npm run db:seed
+npm run db:check
+npm run test:postgres
+```
+
+Pentru Neon, rulează `npm run db:migrate` și `npm run db:check` din rădăcina repository-ului principal. Acestea încarcă fișierele de mediu ignorate de Git, inclusiv `.env.local` generat de Neon, și lasă variabilele exportate să aibă prioritate. Pentru PostgreSQL local rulează comenzile din submodulul API, unde acestea citesc `.env` al submodulului. Seed-ul este explicit, idempotent și refuzat când `NODE_ENV=production`; nu resetează stocul sau comenzile existente.
+
+Runtime-ul `pg` citește `DATABASE_URL` pentru conexiunea pooled, iar comenzile DB aleg `MIGRATION_DATABASE_URL`, `DATABASE_URL_UNPOOLED`, apoi `DATABASE_URL`. Migrarea cere o conexiune directă și refuză hostname-urile Neon `*-pooler`. Tranzacțiile de checkout folosesc un singur client și blocări valabile doar pe durata tranzacției, compatibile cu pooling-ul tranzacțional. Pentru `*.neon.tech`, un `sslmode` absent sau `require` este normalizat la `verify-full`, cu verificarea certificatului și a hostname-ului.
+
+Schema acoperă contractul implementat acum: monedă MDL, cantități întregi, profil producător și intervale cu locație inclusă. Nu introduce încă entități separate de puncte de ridicare, facturare sau AI. Aceste extinderi cer migrații noi și actualizarea contractului.
 
 ## Bootstrap
 
@@ -24,7 +41,7 @@ const app = createApp({
 });
 ```
 
-Bootstrap-ul demo din `app/server.js` refuză pornirea în producție. Configurează bootstrap-ul conectat după alegerea DB. Frontend-ul continuă să consume același contract HTTP.
+`app/server.js` selectează modul prin `loadConfig()` și `createRuntime()`: `DEMO_MODE=false` construiește toate repository-urile PostgreSQL și session store-ul `connect-pg-simple`, cu tabelul `sessions`. Nu există fallback la memorie dacă DB nu răspunde. Startup-ul verifică tabelele; migrarea și seed-ul nu sunt executate automat. `/api/v1/ready` întoarce 503 dacă DB nu răspunde, iar `/health` verifică procesul. `SESSION_SECRET` trebuie să rămână constant pentru păstrarea sesiunilor la restart.
 
 ## Porturi asincrone
 
@@ -57,4 +74,6 @@ Adaptorul în memorie serializează scrierile doar în procesul curent și face 
 
 ## Verificări înainte de producție
 
-După integrarea DB: testează două conexiuni reale pe ultimul produs și ultimul loc, rollback după fiecare etapă, emailuri și chei duplicate concurente, sesiuni după restart, anulări concurente și izolarea între conturi. Aplică migrații și constrângeri de unicitate/referință/stoc în repository-ul responsabil de DB. Configurează TLS, cookie Secure, secret persistent, backup și un session store și rate limiter partajate conform topologiei reale.
+`npm run test:postgres` verifică pe două conexiuni reale ultimul produs și ultimul loc, chei duplicate concurente, rollback după rezervare, sesiuni după recrearea runtime-ului, anulări concurente, istoric și izolarea între conturi. Testele cer `TEST_DATABASE_URL` către o bază al cărei nume este explicit de test și lucrează în scheme aleatoare, eliminate la final. Nu folosi baza aplicației pentru teste.
+
+Înainte de producție, configurează TLS conform furnizorului, cookie Secure, secret persistent și backup. Sesiunile sunt partajate în PostgreSQL; rate limiting-ul este încă în memoria procesului și necesită un store partajat înainte de rularea mai multor instanțe API. Detalii despre furnizori sunt în ghidul `docs/hosting.md` al repository-ului principal.

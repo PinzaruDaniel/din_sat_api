@@ -13,7 +13,7 @@ import {
   requireUser,
 } from '../presentation/http/middlewares/security.js';
 
-export function createApp({ services, sessionStore, config }) {
+export function createApp({ services, sessionStore, config, checkReadiness }) {
   if (!config.sessionSecret || config.sessionSecret.length < 32)
     throw new Error('SESSION_SECRET must contain at least 32 characters.');
   if (config.production && (!sessionStore || config.demo))
@@ -55,7 +55,7 @@ export function createApp({ services, sessionStore, config }) {
   const cookieOptions = {
     httpOnly: true,
     secure: config.production,
-    sameSite: 'lax',
+    sameSite: config.cookieSameSite ?? 'lax',
     path: '/',
   };
   app.use(
@@ -71,6 +71,14 @@ export function createApp({ services, sessionStore, config }) {
   app.get('/api/v1/health', (_req, res) =>
     res.json({ status: 'ok', mode: config.demo ? 'demo' : 'connected' }),
   );
+  app.get('/api/v1/ready', async (_req, res) => {
+    try {
+      if (checkReadiness) await checkReadiness();
+      res.json({ status: 'ready' });
+    } catch {
+      res.status(503).json({ status: 'unavailable' });
+    }
+  });
   app.use('/api/v1', csrfProtection({ allowedOrigin: config.origin }));
   const authLimiter = rateLimit({
     windowMs: 15 * 60000,

@@ -2,10 +2,37 @@ openapi: '3.1.0'
 info:
   title: 'DinSat Marketplace API'
   version: '0.1.0'
-  description: 'Canonical contract. Cookie sessions, session-bound CSRF for all writes, explicit origin checks. Development data is volatile. Registration permits only buyer and producer. Monetary prices are decimal strings in MDL; v1 quantities are integers. Demo payment is at pickup.'
+  description: 'Canonical contract. Cookie sessions, session-bound CSRF for all writes, explicit origin checks. PostgreSQL persists data and sessions; only explicit demo mode is volatile. Registration permits only buyer and producer. Monetary prices are decimal strings in MDL; v1 quantities are integers. Payment is at pickup.'
 servers:
   - url: '/api/v1'
 paths:
+  /ready:
+    get:
+      summary: 'Readiness check including PostgreSQL connectivity'
+      security: []
+      responses:
+        '200':
+          description: 'Ready to receive requests'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    const: ready
+                required: [status]
+                additionalProperties: false
+        '503':
+          description: 'Database unavailable'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    const: unavailable
+                required: [status]
+                additionalProperties: false
   /health:
     get:
       summary: 'Health and persistence mode'
