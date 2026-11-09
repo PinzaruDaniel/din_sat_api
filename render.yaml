@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: dinsat-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    autoDeployTrigger: 'off'
+    healthCheckPath: /api/v1/ready
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_ORIGIN
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: TRUST_PROXY
+        value: '1'

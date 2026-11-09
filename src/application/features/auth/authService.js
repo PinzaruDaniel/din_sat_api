@@ -30,7 +30,7 @@ export function createAuthService({ users, passwords }) {
       return toPublicUser(user);
     },
     async getUser(id) {
-      const user = await users.findById(id);
+      const user = id ? await users.findById(id) : null;
       if (!user)
         throw new AppError(
           401,

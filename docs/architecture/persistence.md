@@ -4,7 +4,7 @@ Persistența este implementată pe PostgreSQL prin driverul `pg`, fără ORM. Ap
 
 ## Schema și inițializarea
 
-`database/migrations/001_initial.sql` creează `users`, `producers`, `products`, `pickup_slots`, `orders`, `order_items`, `idempotency_requests` și `sessions`. `schema_migrations` păstrează versiunile și checksum-urile. Migrațiile aplicate nu se editează; se adaugă un nou fișier SQL versionat. Aplicarea este serializată și atomică.
+`database/migrations/001_initial.sql` creează `users`, `producers`, `products`, `pickup_slots`, `orders`, `order_items`, `idempotency_requests` și `sessions`. Migrația `002_product_images.sql` adaugă stocarea imaginilor de produs. `schema_migrations` păstrează versiunile și checksum-urile. Migrațiile aplicate se păstrează, iar extinderile se adaugă în fișiere SQL versionate. Aplicarea este serializată și atomică.
 
 ```bash
 npm run db:migrate
@@ -25,7 +25,15 @@ Creează adaptoarele în `infrastructure/features/<feature>/` și conexiunea în
 
 ```js
 const services = createServices({
-  repositories: { users, catalog, pickup, orders },
+  repositories: {
+    users,
+    producers,
+    catalog,
+    productImages,
+    pickup,
+    orders,
+    dashboard,
+  },
   passwords: await createPasswords(),
 });
 const app = createApp({
@@ -45,16 +53,26 @@ const app = createApp({
 
 ## Porturi asincrone
 
-| Port      | Operații                                                                            |
-| --------- | ----------------------------------------------------------------------------------- |
-| `users`   | `findByEmail(email)`, `findById(id)`, `create({ name, email, role, passwordHash })` |
-| `catalog` | `all()`, `find(id)`, `create(input)`, `producers()`                                 |
-| `pickup`  | `list(producerId)`, `create(input)`                                                 |
-| `orders`  | `list(user)`, `transaction(async tx => result)`                                     |
+| Port            | Operații                                                                                                              |
+| --------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `users`         | `findByEmail(email)`, `findById(id)`, `create({ name, email, role, passwordHash })`                                   |
+| `producers`     | `all()`, `find(id)`, `update(id, input)`                                                                              |
+| `catalog`       | `all()`, `find(id)`, `owned(producerId)`, `create(input)`, `update(id, producerId, input)`, `archive(id, producerId)` |
+| `productImages` | `save(image)`, `find(id)`, `owns(id, producerId)`                                                                     |
+| `pickup`        | `list(producerId)`, `create(input)`                                                                                   |
+| `orders`        | `list(user)`, `transaction(async tx => result)`                                                                       |
 
 `users.create` trebuie să asigure email unic normalizat și să creeze profilul public al producătorului atomic. Rolurile publice sunt doar `buyer` și `producer`. Returnează o eroare `AppError(409, 'EMAIL_EXISTS', ...)` la conflict. Hash-urile Argon2id rămân private.
 
 `catalog.all` și `catalog.find` întorc modelele publice de produs și profilul public `producer`; nu include câmpuri private ale DB. La volume mari, mută filtrarea/paginarea în porturi de query explicite, păstrând DTO-ul și contractul HTTP.
+
+Operațiile publice ale catalogului citesc numai produse active. Arhivarea setează `products.active = false`, păstrând produsul și referințele din `order_items`. Articolele comenzilor salvează propriul titlu, unitatea, prețul și cantitatea la momentul checkout-ului. Editarea produsului actualizează doar câmpurile trimise.
+
+## Imagini de produs
+
+`POST /api/v1/producer/uploads` primește corpul binar al unei imagini PNG, JPEG sau WebP de maximum 2 MiB, cu sesiune de producător și token CSRF. Serverul verifică structura formatului și concordanța cu tipul declarat. În PostgreSQL, adaptorul `productImages` păstrează fișierul în `product_images.bytes` și îl asociază cu proprietarul. În demo, același port folosește memorie și datele expiră la oprirea procesului.
+
+Răspunsul conține `imageUrl` de forma `/api/v1/product-images/<uuid>`, disponibil imediat pentru previzualizare. Doar producătorul care a încărcat imaginea poate salva acea referință internă într-un produs. API-ul servește imaginile ca resurse publice și păstrează compatibilitatea cu adresele externe HTTPS. Cererile de catalog citesc referința imaginii, iar fișierul este încărcat la cererea browserului.
 
 ## Portul tranzacției comenzilor
 

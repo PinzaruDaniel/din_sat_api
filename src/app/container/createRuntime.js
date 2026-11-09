@@ -4,9 +4,13 @@ import { createPostgresDatabase } from '../../infrastructure/persistence/connect
 import { createPostgresPool } from '../../infrastructure/persistence/connections/createPostgresPool.js';
 import { createSessionStore } from '../../infrastructure/persistence/sessions/createSessionStore.js';
 import { createPasswords } from '../../infrastructure/security/passwords.js';
+import { createGateway } from '../../infrastructure/features/ai/createGateway.js';
 
 export async function createRuntime(config) {
   const passwords = await createPasswords();
+  const gateway = config.aiGateway
+    ? createGateway(config.aiGateway)
+    : undefined;
   if (config.demo) {
     const repositories = createDemoDatabase();
     for (const role of ['buyer', 'producer']) {
@@ -18,7 +22,7 @@ export async function createRuntime(config) {
       });
     }
     return {
-      services: createServices({ repositories, passwords }),
+      services: createServices({ repositories, passwords, gateway }),
       checkReadiness: async () => {},
       close: async () => {},
     };
@@ -36,7 +40,7 @@ export async function createRuntime(config) {
     const repositories = createPostgresDatabase({ pool });
     const sessionStore = createSessionStore(pool);
     return {
-      services: createServices({ repositories, passwords }),
+      services: createServices({ repositories, passwords, gateway }),
       sessionStore,
       checkReadiness: async () => {
         await pool.query('SELECT 1');

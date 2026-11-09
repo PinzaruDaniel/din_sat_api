@@ -76,6 +76,11 @@ test(
       .expect(200);
     assert.equal(restored.body.user.id, registered.body.user.id);
     assert.equal(restored.body.csrfToken, registered.body.csrfToken);
+    const me = await request(second.app)
+      .get('/api/v1/auth/me')
+      .set('Cookie', cookie)
+      .expect(200);
+    assert.deepEqual(me.body.user, registered.body.user);
     await request(second.app)
       .get('/api/v1/orders')
       .set('Cookie', cookie)
@@ -98,5 +103,27 @@ test(
       .set('Cookie', cookie)
       .expect(200);
     assert.equal(revoked.body.user, null);
+    const loggedIn = await request(third.app)
+      .post('/api/v1/auth/login')
+      .set('Cookie', revoked.headers['set-cookie'][0].split(';')[0])
+      .set('Origin', origin)
+      .set('X-CSRF-Token', revoked.body.csrfToken)
+      .send({
+        email: 'persistent@dinsat.test',
+        password: 'long-test-password-for-postgres',
+      })
+      .expect(200);
+    const currentCookie = loggedIn.headers['set-cookie'][0].split(';')[0];
+    await request(third.app)
+      .get('/api/v1/auth/me')
+      .set('Cookie', currentCookie)
+      .expect(200);
+    await admin.query(
+      `UPDATE ${schema}.sessions SET expire = now() - interval '1 second'`,
+    );
+    await request(third.app)
+      .get('/api/v1/auth/me')
+      .set('Cookie', currentCookie)
+      .expect(401);
   },
 );

@@ -61,6 +61,7 @@ Contractul canonic este [OpenAPI](docs/api/openapi.yaml). Prefix: `/api/v1`.
 | GET    | `/health`                                                   | Public                                                 |
 | GET    | `/ready`                                                    | Public; 503 dacă baza de date nu răspunde              |
 | GET    | `/auth/session`                                             | Public; întoarce utilizatorul sau null și tokenul CSRF |
+| GET    | `/auth/me`                                                  | Cont autentificat                                      |
 | POST   | `/auth/register`, `/auth/login`, `/auth/logout`             | Cookie + CSRF                                          |
 | GET    | `/products`, `/products/:id`, `/producers`, `/pickup-slots` | Public                                                 |
 | POST   | `/products`, `/pickup-slots`                                | Producător + CSRF                                      |
@@ -68,7 +69,7 @@ Contractul canonic este [OpenAPI](docs/api/openapi.yaml). Prefix: `/api/v1`.
 | POST   | `/orders`                                                   | Cumpărător + CSRF + `Idempotency-Key`                  |
 | PATCH  | `/orders/:id/status`                                        | Participant autorizat + CSRF                           |
 
-La prima încărcare, frontend-ul citește `/auth/session` cu `credentials: include`. Cererile de scriere trimit `X-CSRF-Token`. Login și înregistrarea regenerează sesiunea și tokenul; logout distruge sesiunea pe server. Cookie-ul `dinsat.sid` este HttpOnly, SameSite=Lax, cu durată de opt ore; Secure în producție. Nici parola, nici ID-ul sesiunii nu sunt păstrate în localStorage. Originea permisă este explicită, iar API-ul verifică tokenul CSRF și originea când headerul Origin este prezent. Sunt aplicate limite pentru cereri și încercări de login.
+La prima încărcare, frontend-ul citește `/auth/me` cu `credentials: include`. Înainte de prima scriere, preia tokenul CSRF de la `/auth/session` și îl trimite în `X-CSRF-Token`. Loginul și înregistrarea regenerează sesiunea și tokenul. Logoutul distruge sesiunea pe server. Cookie-ul `dinsat.sid` este HttpOnly, SameSite=Lax, cu durată de opt ore și atributul Secure în producție. Parola și ID-ul sesiunii sunt păstrate în afara localStorage. API-ul verifică tokenul CSRF și originea când headerul Origin este prezent. Sunt aplicate limite pentru cereri și încercări de login.
 
 Prețurile sunt șiruri cu două zecimale și monedă MDL. Totalurile se calculează în bani întregi; versiunea curentă acceptă cantități întregi de kg, l sau buc. O comandă conține un singur producător. Cheia de checkout este reutilizată pentru retry al aceleiași intenții; alt payload cu aceeași cheie primește 409. Anularea repetată nu restabilește stocul de două ori.
 

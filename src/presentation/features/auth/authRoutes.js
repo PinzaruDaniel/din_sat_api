@@ -33,6 +33,10 @@ export function createAuthRoutes({ auth, authLimiter, cookieOptions }) {
       : null;
     res.json({ user, csrfToken: ensureCsrf(req) });
   });
+  router.get('/me', async (req, res) => {
+    const user = await auth.getUser(req.session.userId);
+    res.json({ user });
+  });
   for (const action of ['login', 'register']) {
     router.post(
       `/${action}`,

@@ -42,6 +42,7 @@ paths:
           description: 'Success'
           content:
             application/json:
+              example: { status: ok, mode: connected }
               schema:
                 type: 'object'
                 properties:
@@ -94,6 +95,24 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
+  /auth/me:
+    get:
+      summary: Read the current authenticated user
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Error401'
   /auth/register:
     post:
       summary: 'Register buyer or producer and rotate session'
@@ -198,6 +217,7 @@ paths:
   /products:
     get:
       summary: 'Filter and paginate products'
+      description: 'Combines filters. Total counts active matching products before pagination. A page beyond the last, or a filter with no matches, returns an empty items array.'
       security: []
       responses:
         '200':
@@ -380,6 +400,329 @@ paths:
           $ref: '#/components/responses/Error429'
         '500':
           $ref: '#/components/responses/Error500'
+  '/producers/{id}':
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      summary: 'Read a public producer profile'
+      security: []
+      responses:
+        '200':
+          $ref: '#/components/responses/ProducerProfile'
+        '404':
+          $ref: '#/components/responses/Error404'
+  /producer/profile:
+    get:
+      summary: 'Read the authenticated producer profile'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          $ref: '#/components/responses/ProducerProfile'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+    put:
+      summary: 'Replace the public fields of the authenticated producer profile'
+      description: 'The producer ID comes from the session. Unknown fields, including id, are rejected.'
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProducerProfileInput'
+      responses:
+        '200':
+          $ref: '#/components/responses/ProducerProfile'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+  /producer/products:
+    get:
+      summary: 'List active and archived products for the authenticated producer'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: 'Managed products, including active status'
+          content:
+            application/json:
+              schema:
+                type: 'object'
+                required: ['items']
+                additionalProperties: false
+                properties:
+                  items:
+                    type: 'array'
+                    items:
+                      $ref: '#/components/schemas/ManagedProduct'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+    post:
+      summary: 'Create a product for the authenticated producer'
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductInput'
+      responses:
+        '201':
+          description: 'Created product'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+  '/producer/products/{id}':
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+      - $ref: '#/components/parameters/CsrfToken'
+    patch:
+      summary: 'Edit specified fields of an active product owned by the authenticated producer'
+      description: 'Omitted fields are preserved. Products owned by another producer return 404.'
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductChanges'
+      responses:
+        '200':
+          description: 'Updated product'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagedProduct'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+    delete:
+      summary: 'Archive an owned product while retaining order history'
+      security:
+        - sessionCookie: []
+      responses:
+        '204':
+          description: 'Archived, including repeated requests for an already archived product'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+  /producer/uploads:
+    post:
+      summary: 'Upload a product image for the authenticated producer'
+      description: 'Send raw bytes with the image media type. Size limit 2 MiB. The response contains a public reference usable by products owned by the uploader.'
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          image/png: {}
+          image/jpeg: {}
+          image/webp: {}
+      responses:
+        '201':
+          description: 'Image uploaded'
+          content:
+            application/json:
+              schema:
+                type: 'object'
+                properties:
+                  imageUrl:
+                    $ref: '#/components/schemas/UploadedImageReference'
+                required: ['imageUrl']
+                additionalProperties: false
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '413':
+          description: 'Image exceeds 2 MiB'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '415':
+          description: 'Unsupported image media type'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  '/product-images/{id}':
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      summary: 'Read uploaded product image bytes'
+      security: []
+      responses:
+        '200':
+          description: 'Image'
+          content:
+            image/png: {}
+            image/jpeg: {}
+            image/webp: {}
+        '404':
+          $ref: '#/components/responses/Error404'
+  '/producers/{producerId}/pickup-slots':
+    get:
+      summary: 'List future pickup slots for a producer, including full intervals'
+      security: []
+      parameters:
+        - name: producerId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 80 }
+      responses:
+        '200':
+          $ref: '#/components/responses/PickupSlots'
+        '400':
+          $ref: '#/components/responses/Error400'
+  /pickup-slots/mine:
+    get:
+      summary: 'List all pickup slots owned by the authenticated producer'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          $ref: '#/components/responses/PickupSlots'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+  '/pickup-slots/{id}':
+    patch:
+      summary: 'Set total capacity for an owned future slot while preserving reservations'
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                capacity: { type: integer, minimum: 1, maximum: 1000 }
+              required: [capacity]
+              additionalProperties: false
+      responses:
+        '200':
+          description: 'Updated pickup slot'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pickup'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+  /pickup-points:
+    get:
+      summary: 'List pickup points owned by the authenticated producer'
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: 'Owned pickup points'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PickupPoint'
+                required: [items]
+                additionalProperties: false
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+    post:
+      summary: 'Create a pickup point or return the point already registered at this address'
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        $ref: '#/components/requestBodies/PickupPointLocation'
+      responses:
+        '201':
+          $ref: '#/components/responses/PickupPoint'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+  '/pickup-points/{id}':
+    patch:
+      summary: 'Update the pickup address used for new slots at an owned point'
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        $ref: '#/components/requestBodies/PickupPointLocation'
+      responses:
+        '200':
+          $ref: '#/components/responses/PickupPoint'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
   /pickup-slots:
     get:
       summary: 'Future available pickup slots for a producer'
@@ -458,11 +801,75 @@ paths:
           required: true
           schema:
             type: 'string'
+  /producer/dashboard:
+    get:
+      summary: 'Raport de comenzi pentru producătorul autentificat'
+      description: |
+        Filtrarea folosește data creării comenzii și statusul său curent.
+        Zilele calendaristice `from` și `to` sunt incluse, în fusul Europe/Chisinau.
+        Limita inferioară este miezul nopții din `from`, iar limita superioară
+        este miezul nopții din ziua următoare lui `to`, exclusă. Fără parametri,
+        se folosesc ultimele 30 de zile calendaristice, inclusiv ziua curentă.
+
+        `orderCount` numără toate comenzile. `activeCount` include `new`,
+        `confirmed`, `preparing` și `ready`. `completedCount` include `completed`,
+        iar `cancelledCount` include `cancelled`.
+
+        `completedAmounts` adună totalurile comenzilor `completed` separat pe
+        fiecare monedă, fără conversie. Dacă lipsesc comenzile finalizate,
+        raportul returnează 0.00 MDL.
+
+        `popularProducts` conține cel mult cinci produse, în ordinea numărului
+        descrescător de comenzi finalizate care conțin produsul. La egalitate,
+        se folosește ID-ul produsului. Titlul provine din cea mai recentă comandă
+        finalizată din interval care conține produsul.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: from
+          in: query
+          description: 'Prima zi inclusă. Când este prezent, to este obligatoriu.'
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          description: 'Ultima zi inclusă. Trebuie să fie cel puțin egală cu from.'
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: 'Indicatori calculați pentru intervalul selectat'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProducerDashboard'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '500':
+          $ref: '#/components/responses/Error500'
   /orders:
     get:
       summary: 'List orders owned by the buyer or producer'
       security:
         - sessionCookie: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 1000000, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        - name: pickupSlotId
+          in: query
+          schema: { type: string, minLength: 1, maxLength: 80 }
       responses:
         '200':
           description: 'Success'
@@ -475,8 +882,10 @@ paths:
                     type: 'array'
                     items:
                       $ref: '#/components/schemas/Order'
-                required:
-                  - 'items'
+                  page: { type: integer, minimum: 1 }
+                  pageSize: { type: integer, minimum: 1 }
+                  hasNext: { type: boolean }
+                required: [items, page, pageSize, hasNext]
                 additionalProperties: false
         '400':
           $ref: '#/components/responses/Error400'
@@ -535,6 +944,43 @@ paths:
           required: true
           schema:
             type: 'string'
+  '/orders/{id}':
+    get:
+      summary: 'Read an order with its historical item prices and pickup details'
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Order'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '404':
+          description: 'Order absent or inaccessible for the current account'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  '/orders/{id}/cancel':
+    post:
+      summary: 'Cancel a new or confirmed order and release reservations once'
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '200':
+          $ref: '#/components/responses/Order'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
   '/orders/{id}/status':
     patch:
       summary: 'Producer advances status; either participant may cancel new/confirmed orders'
@@ -580,13 +1026,174 @@ paths:
           required: true
           schema:
             type: 'string'
+  /ai/chat:
+    post:
+      summary: Suggest available products for an authenticated buyer
+      description: At most six requests per account per minute. Proposals expire after ten minutes and stay in the current API process.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example: { message: 'Aș vrea legume pentru o salată' }
+            schema:
+              type: object
+              required: [message]
+              additionalProperties: false
+              properties:
+                message: { type: string, minLength: 1, maxLength: 600 }
+                previous:
+                  type: array
+                  maxItems: 4
+                  items: { type: string, minLength: 1, maxLength: 600 }
+      responses:
+        '200':
+          description: Search result and optional basket proposal
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message, proposal]
+                properties:
+                  message: { type: string }
+                  proposal:
+                    oneOf:
+                      - $ref: '#/components/schemas/CartProposal'
+                      - type: 'null'
+        '400': { $ref: '#/components/responses/Error400' }
+        '401': { $ref: '#/components/responses/Error401' }
+        '403': { $ref: '#/components/responses/Error403' }
+        '429': { $ref: '#/components/responses/Error429' }
+        '503':
+          description: The assistant is unavailable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  '/ai/cart-proposals/{id}/confirm':
+    post:
+      summary: Revalidate a basket proposal owned by the buyer
+      description: Returns canonical items for the browser basket without reserving stock or creating an order.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Revalidated basket items
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProposedBasket' }
+        '400': { $ref: '#/components/responses/Error400' }
+        '401': { $ref: '#/components/responses/Error401' }
+        '403': { $ref: '#/components/responses/Error403' }
+        '404': { $ref: '#/components/responses/Error404' }
+        '409': { $ref: '#/components/responses/Error409' }
 components:
+  requestBodies:
+    PickupPointLocation:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              location: { type: string, minLength: 5, maxLength: 200 }
+            required: [location]
+            additionalProperties: false
+  parameters:
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema: { type: string }
+    ResourceId:
+      name: 'id'
+      in: 'path'
+      required: true
+      schema:
+        type: 'string'
   securitySchemes:
     sessionCookie:
       type: 'apiKey'
       in: 'cookie'
       name: 'dinsat.sid'
   schemas:
+    ProposedBasket:
+      type: object
+      required: [items, totalAmount]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            type: object
+            required: [product, quantity]
+            properties:
+              product: { $ref: '#/components/schemas/Product' }
+              quantity: { type: integer, minimum: 1, maximum: 100 }
+        totalAmount:
+          type: string
+          pattern: '^\d+\.\d{2}$'
+          example: '35.00'
+    CartProposal:
+      allOf:
+        - $ref: '#/components/schemas/ProposedBasket'
+        - type: object
+          required: [id, expiresAt]
+          properties:
+            id: { type: string, format: uuid }
+            expiresAt: { type: string, format: date-time }
+    ProducerDashboard:
+      type: object
+      required:
+        [
+          period,
+          orderCount,
+          activeCount,
+          completedCount,
+          cancelledCount,
+          completedAmounts,
+          popularProducts,
+        ]
+      properties:
+        period:
+          type: object
+          required: [from, to, timeZone]
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+            timeZone: { const: 'Europe/Chisinau' }
+        orderCount: { type: integer, minimum: 0 }
+        activeCount: { type: integer, minimum: 0 }
+        completedCount: { type: integer, minimum: 0 }
+        cancelledCount: { type: integer, minimum: 0 }
+        completedAmounts:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [currency, amount]
+            properties:
+              currency: { type: string, pattern: '^[A-Z]{3}$' }
+              amount: { type: string, pattern: '^\d+\.\d{2}$' }
+        popularProducts:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            required: [productId, title, orderCount]
+            properties:
+              productId: { type: string }
+              title: { type: string }
+              orderCount: { type: integer, minimum: 1 }
     User:
       type: 'object'
       properties:
@@ -702,7 +1309,34 @@ components:
         - 'locality'
         - 'description'
       additionalProperties: false
-    ProductInput:
+    ProducerProfileInput:
+      type: 'object'
+      properties:
+        name:
+          type: 'string'
+          minLength: 2
+          maxLength: 100
+        locality:
+          type: 'string'
+          minLength: 2
+          maxLength: 80
+        description:
+          type: 'string'
+          minLength: 10
+          maxLength: 2000
+      required: ['name', 'locality', 'description']
+      additionalProperties: false
+    UploadedImageReference:
+      type: 'string'
+      pattern: '^/api/v1/product-images/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    ProductImageReference:
+      oneOf:
+        - $ref: '#/components/schemas/UploadedImageReference'
+        - type: 'string'
+          format: 'uri'
+          maxLength: 2048
+          pattern: '^https://'
+    ProductChanges:
       type: 'object'
       properties:
         title:
@@ -737,18 +1371,21 @@ components:
           minimum: 0
           maximum: 100000
         imageUrl:
-          type: 'string'
-          format: 'uri'
-          pattern: '^https://'
-      required:
-        - 'title'
-        - 'description'
-        - 'category'
-        - 'unit'
-        - 'priceAmount'
-        - 'availableQuantity'
-        - 'imageUrl'
+          $ref: '#/components/schemas/ProductImageReference'
       additionalProperties: false
+    ProductInput:
+      allOf:
+        - $ref: '#/components/schemas/ProductChanges'
+        - required:
+            [
+              'title',
+              'description',
+              'category',
+              'unit',
+              'priceAmount',
+              'availableQuantity',
+              'imageUrl',
+            ]
     PickupInput:
       type: 'object'
       properties:
@@ -762,6 +1399,10 @@ components:
           type: 'string'
           minLength: 5
           maxLength: 200
+        pickupPointId:
+          type: 'string'
+          minLength: 1
+          maxLength: 80
         capacity:
           type: 'integer'
           minimum: 1
@@ -769,8 +1410,10 @@ components:
       required:
         - 'startsAt'
         - 'endsAt'
-        - 'location'
         - 'capacity'
+      oneOf:
+        - required: [location]
+        - required: [pickupPointId]
       additionalProperties: false
       description: 'Future start within 180 days; end after start, maximum duration 8 hours.'
     Checkout:
@@ -852,7 +1495,7 @@ components:
       required:
         - 'status'
       additionalProperties: false
-    Product:
+    ProductFields:
       type: 'object'
       properties:
         title:
@@ -887,9 +1530,7 @@ components:
           minimum: 0
           maximum: 100000
         imageUrl:
-          type: 'string'
-          format: 'uri'
-          pattern: '^https://'
+          $ref: '#/components/schemas/ProductImageReference'
         id:
           type: 'string'
           minLength: 1
@@ -916,6 +1557,27 @@ components:
         - 'producerId'
         - 'currency'
         - 'producer'
+    Product:
+      allOf:
+        - $ref: '#/components/schemas/ProductFields'
+      unevaluatedProperties: false
+    ManagedProduct:
+      allOf:
+        - $ref: '#/components/schemas/ProductFields'
+        - type: 'object'
+          properties:
+            active:
+              type: 'boolean'
+          required: ['active']
+      unevaluatedProperties: false
+    PickupPoint:
+      type: object
+      properties:
+        id: { type: string, minLength: 1, maxLength: 80 }
+        producerId: { type: string, minLength: 1, maxLength: 80 }
+        location: { type: string, minLength: 5, maxLength: 200 }
+        timeZone: { const: 'Europe/Chisinau' }
+      required: [id, producerId, location, timeZone]
       additionalProperties: false
     Pickup:
       type: 'object'
@@ -932,8 +1594,17 @@ components:
           maxLength: 200
         capacity:
           type: 'integer'
+          minimum: 0
+          maximum: 1000
+          description: 'Remaining places at the time of the response or order snapshot.'
+        maxCapacity:
+          type: 'integer'
           minimum: 1
           maximum: 1000
+        pickupPointId:
+          type: 'string'
+          minLength: 1
+          maxLength: 80
         id:
           type: 'string'
           minLength: 1
@@ -1022,10 +1693,45 @@ components:
         - 'pageSize'
       additionalProperties: false
   responses:
+    PickupSlots:
+      description: 'Pickup slots ordered by start time'
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              items:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Pickup'
+            required: [items]
+            additionalProperties: false
+    PickupPoint:
+      description: 'Pickup point'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PickupPoint'
+    Order:
+      description: 'Order and its saved line items'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Order'
+    ProducerProfile:
+      description: 'Public profile fields'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Producer'
     Error400:
       description: 'Invalid input'
       content:
         application/json:
+          example:
+            code: VALIDATION_ERROR
+            message: Verifică datele introduse.
+            requestId: 123e4567-e89b-42d3-a456-426614174000
           schema:
             $ref: '#/components/schemas/Error'
     Error401:

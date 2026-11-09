@@ -198,6 +198,50 @@ test('checkout computes prices, replays idempotently and rejects changed payload
     .expect(409);
   const orders = await client.agent.get('/api/v1/orders').expect(200);
   assert.equal(orders.body.items.length, 1);
+  const detail = await client.agent
+    .get(`/api/v1/orders/${first.body.id}`)
+    .expect(200);
+  assert.deepEqual(detail.body, first.body);
+});
+
+test('order pagination and slot filters stay scoped to the current account', async () => {
+  const buyer = await register();
+  const other = await register('buyer', 'other@example.md');
+  const create = async (index) =>
+    (
+      await mutation(buyer, 'post', '/api/v1/orders')
+        .set('Idempotency-Key', `checkout-page-key-${index}`)
+        .send({ ...checkout, pickupSlotId: `producer-1-slot-${index}` })
+        .expect(201)
+    ).body;
+  const first = await create(1);
+  const second = await create(2);
+  const page1 = (await buyer.agent.get('/api/v1/orders?pageSize=1').expect(200))
+    .body;
+  const page2 = (
+    await buyer.agent.get('/api/v1/orders?pageSize=1&page=2').expect(200)
+  ).body;
+  assert.deepEqual(
+    page1.items.map((order) => order.id),
+    [second.id],
+  );
+  assert.equal(page1.hasNext, true);
+  assert.deepEqual(
+    page2.items.map((order) => order.id),
+    [first.id],
+  );
+  assert.equal(page2.hasNext, false);
+  const filtered = (
+    await buyer.agent
+      .get(`/api/v1/orders?pickupSlotId=${first.pickup.id}`)
+      .expect(200)
+  ).body;
+  assert.deepEqual(
+    filtered.items.map((order) => order.id),
+    [first.id],
+  );
+  await other.agent.get(`/api/v1/orders/${first.id}`).expect(404);
+  await request(app).get(`/api/v1/orders/${first.id}`).expect(401);
 });
 
 test('rejects duplicate lines, mixed producers, price injection and wrong pickup slots', async () => {
@@ -246,9 +290,11 @@ test('order lists and mutations isolate accounts; repeated cancellation restores
     .send({ status: 'confirmed' })
     .expect(403);
   for (let attempt = 0; attempt < 2; attempt++)
-    await mutation(client, 'patch', `/api/v1/orders/${order.body.id}/status`)
-      .send({ status: 'cancelled' })
-      .expect(200);
+    await mutation(
+      client,
+      'post',
+      `/api/v1/orders/${order.body.id}/cancel`,
+    ).expect(200);
   assert.equal(
     (await request(app).get('/api/v1/products/product-1')).body
       .availableQuantity,
@@ -331,4 +377,65 @@ test('pickup slots belong to the session producer and reject invalid times and b
     .get(`/api/v1/pickup-slots?producerId=${producer.user.id}`)
     .expect(200);
   assert.equal(list.body.items.length, 1);
+});
+
+test('pickup points and capacity changes are scoped to their producer', async () => {
+  const producer = await register('producer');
+  const other = await register('producer', 'other-producer@example.md');
+  const buyer = await register();
+  const location = 'Piața centrală, Chișinău';
+  await mutation(buyer, 'post', '/api/v1/pickup-points')
+    .send({ location })
+    .expect(403);
+  const point = (
+    await mutation(producer, 'post', '/api/v1/pickup-points')
+      .send({ location })
+      .expect(201)
+  ).body;
+  const pointPath = `/api/v1/pickup-points/${point.id}`;
+  assert.equal(point.producerId, producer.user.id);
+  assert.equal(
+    (await other.agent.get('/api/v1/pickup-points').expect(200)).body.items
+      .length,
+    0,
+  );
+  await mutation(other, 'patch', pointPath).send({ location }).expect(404);
+
+  const startsAt = new Date(Date.now() + 86400000);
+  const input = {
+    startsAt: startsAt.toISOString(),
+    endsAt: new Date(startsAt.getTime() + 7200000).toISOString(),
+    pickupPointId: point.id,
+    capacity: 2,
+  };
+  await mutation(other, 'post', '/api/v1/pickup-slots').send(input).expect(404);
+  const slot = (
+    await mutation(producer, 'post', '/api/v1/pickup-slots')
+      .send(input)
+      .expect(201)
+  ).body;
+  assert.equal(slot.pickupPointId, point.id);
+  assert.equal(slot.location, location);
+  const slotPath = `/api/v1/pickup-slots/${slot.id}`;
+  await mutation(other, 'patch', slotPath).send({ capacity: 1 }).expect(404);
+  const edited = (
+    await mutation(producer, 'patch', slotPath)
+      .send({ capacity: 1 })
+      .expect(200)
+  ).body;
+  assert.equal(edited.maxCapacity, 1);
+  assert.equal(edited.capacity, 1);
+  await mutation(producer, 'patch', pointPath)
+    .send({ location: 'Strada nouă, Chișinău' })
+    .expect(200);
+  const owned = (
+    await producer.agent.get('/api/v1/pickup-slots/mine').expect(200)
+  ).body;
+  assert.deepEqual(owned.items, [edited]);
+  const publicSlots = (
+    await request(app)
+      .get(`/api/v1/producers/${producer.user.id}/pickup-slots`)
+      .expect(200)
+  ).body;
+  assert.deepEqual(publicSlots.items, [edited]);
 });

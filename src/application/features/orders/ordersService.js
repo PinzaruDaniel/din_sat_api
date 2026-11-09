@@ -1,10 +1,33 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { AppError } from '../../../shared/errors/AppError.js';
+import { priceMinor } from '../../../domain/features/catalog/product.js';
 import { assertOrderTransition } from '../../../domain/features/orders/orderPolicy.js';
 
 export function createOrdersService({ orders }) {
   return {
-    list: (user) => orders.list(user),
+    async list(user, { page = 1, pageSize = 20, pickupSlotId } = {}) {
+      const items = await orders.list(user, {
+        limit: pageSize + 1,
+        offset: (page - 1) * pageSize,
+        pickupSlotId,
+      });
+      return {
+        items: items.slice(0, pageSize),
+        page,
+        pageSize,
+        hasNext: items.length > pageSize,
+      };
+    },
+    async get(user, id) {
+      const order = await orders.get(user, id);
+      if (!order)
+        throw new AppError(
+          404,
+          'ORDER_NOT_FOUND',
+          'Comanda nu a fost găsită sau nu este disponibilă pentru acest cont.',
+        );
+      return order;
+    },
     create(user, input, key) {
       if (user.role !== 'buyer')
         throw new AppError(
@@ -74,8 +97,7 @@ export function createOrdersService({ orders }) {
         }
         // Integer minor units avoid floating-point money arithmetic. Quantities use whole units in v1.
         const totalMinor = items.reduce(
-          (sum, item) =>
-            sum + Number(item.priceAmount.replace('.', '')) * item.quantity,
+          (sum, item) => sum + priceMinor(item.priceAmount) * item.quantity,
           0,
         );
         const order = {
@@ -83,7 +105,15 @@ export function createOrdersService({ orders }) {
           buyerId: user.id,
           producerId,
           items,
-          pickup: { ...slot },
+          pickup: {
+            id: slot.id,
+            producerId: slot.producerId,
+            startsAt: slot.startsAt,
+            endsAt: slot.endsAt,
+            timeZone: slot.timeZone,
+            location: slot.location,
+            capacity: slot.capacity,
+          },
           totalAmount: (totalMinor / 100).toFixed(2),
           currency: 'MDL',
           status: 'new',

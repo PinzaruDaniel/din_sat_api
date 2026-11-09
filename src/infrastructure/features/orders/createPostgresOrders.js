@@ -147,13 +147,25 @@ export function createPostgresOrders(pool) {
   return {
     transaction: (work) =>
       withTransaction(pool, (client) => work(createTransaction(client))),
-    async list(user) {
+    async get(user, id) {
+      const column = user.role === 'producer' ? 'producer_id' : 'buyer_id';
+      const row = (
+        await pool.query(
+          `SELECT * FROM orders WHERE id = $1 AND ${column} = $2`,
+          [id, user.id],
+        )
+      ).rows[0];
+      return orderFromRow(pool, row);
+    },
+    async list(user, { limit = null, offset = 0, pickupSlotId = null } = {}) {
       const column = user.role === 'producer' ? 'producer_id' : 'buyer_id';
       return withTransaction(pool, async (client) => {
         const rows = (
           await client.query(
-            `SELECT * FROM orders WHERE ${column} = $1 ORDER BY created_at DESC, id`,
-            [user.id],
+            `SELECT * FROM orders
+             WHERE ${column} = $1 AND ($2::text IS NULL OR pickup_slot_id = $2)
+             ORDER BY created_at DESC, id LIMIT $3 OFFSET $4`,
+            [user.id, pickupSlotId, limit, offset],
           )
         ).rows;
         return Promise.all(rows.map((row) => orderFromRow(client, row)));

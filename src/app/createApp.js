@@ -7,7 +7,10 @@ import { rateLimit } from 'express-rate-limit';
 import { randomUUID } from 'node:crypto';
 import { createAuthRoutes } from '../presentation/features/auth/authRoutes.js';
 import { createCatalogRoutes } from '../presentation/features/catalog/catalogRoutes.js';
+import { createProducersRoutes } from '../presentation/features/producers/producersRoutes.js';
 import { createOrdersRoutes } from '../presentation/features/orders/ordersRoutes.js';
+import { createAiRoutes } from '../presentation/features/ai/aiRoutes.js';
+import { createDashboardRoutes } from '../presentation/features/dashboard/dashboardRoutes.js';
 import {
   csrfProtection,
   requireUser,
@@ -99,8 +102,16 @@ export function createApp({ services, sessionStore, config, checkReadiness }) {
   );
   const authenticated = requireUser(services.auth);
   app.use(
+    '/api/v1/ai',
+    createAiRoutes({ assistant: services.assistant, authenticated }),
+  );
+  app.use(
     '/api/v1',
     createCatalogRoutes({ catalog: services.catalog, authenticated }),
+  );
+  app.use(
+    '/api/v1',
+    createProducersRoutes({ producers: services.producers, authenticated }),
   );
   app.use(
     '/api/v1',
@@ -109,6 +120,10 @@ export function createApp({ services, sessionStore, config, checkReadiness }) {
   app.use(
     '/api/v1/orders',
     createOrdersRoutes({ orders: services.orders, authenticated }),
+  );
+  app.use(
+    '/api/v1',
+    createDashboardRoutes({ dashboard: services.dashboard, authenticated }),
   );
   app.use((req, res) =>
     res.status(404).json({

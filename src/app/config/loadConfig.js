@@ -7,6 +7,21 @@ function integer(value, fallback, name, min, max) {
   return Number(value);
 }
 
+function aiGatewayConfig(env) {
+  const token = env.NEON_AI_GATEWAY_TOKEN;
+  const model = env.AI_MODEL?.trim();
+  if (!token || !model || !env.NEON_AI_GATEWAY_BASE_URL) return undefined;
+  let url;
+  try {
+    url = new URL(env.NEON_AI_GATEWAY_BASE_URL);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== 'https:' || url.href !== `${url.origin}/`)
+    return undefined;
+  return { endpoint: `${url.origin}/v1/chat/completions`, token, model };
+}
+
 export function loadConfig(env = process.env) {
   const production = env.NODE_ENV === 'production';
   if (env.DEMO_MODE !== undefined && !['true', 'false'].includes(env.DEMO_MODE))
@@ -61,5 +76,6 @@ export function loadConfig(env = process.env) {
     trustProxy: integer(env.TRUST_PROXY, 0, 'TRUST_PROXY', 0, 2),
     databaseUrl: env.DATABASE_URL,
     poolMax: integer(env.DB_POOL_MAX, 5, 'DB_POOL_MAX', 1, 20),
+    aiGateway: aiGatewayConfig(env),
   };
 }

@@ -22,11 +22,21 @@ const input = z
     pickupSlotId: z.string().min(1).max(80),
   })
   .strict();
+const listQuery = z
+  .object({
+    page: z.coerce.number().int().min(1).max(1000000).optional(),
+    pageSize: z.coerce.number().int().min(1).max(50).optional(),
+    pickupSlotId: z.string().min(1).max(80).optional(),
+  })
+  .strict();
 export function createOrdersRoutes({ orders, authenticated }) {
   const router = Router();
   router.use(authenticated);
-  router.get('/', async (req, res) =>
-    res.json({ items: await orders.list(req.user) }),
+  router.get('/', validate(listQuery, 'query'), async (req, res) =>
+    res.json(await orders.list(req.user, req.validated)),
+  );
+  router.get('/:id', async (req, res) =>
+    res.json(await orders.get(req.user, req.params.id)),
   );
   router.post('/', validate(input), validateKey, async (req, res) =>
     res
@@ -58,6 +68,9 @@ export function createOrdersRoutes({ orders, authenticated }) {
       res.json(
         await orders.update(req.user, req.params.id, req.validated.status),
       ),
+  );
+  router.post('/:id/cancel', async (req, res) =>
+    res.json(await orders.update(req.user, req.params.id, 'cancelled')),
   );
   return router;
 }

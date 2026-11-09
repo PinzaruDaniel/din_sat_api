@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { readdir } from 'node:fs/promises';
 import { createPostgresPool } from '../../src/infrastructure/persistence/connections/createPostgresPool.js';
 import { createPostgresDatabase } from '../../src/infrastructure/persistence/connections/createPostgresDatabase.js';
 import { migrate } from '../../src/infrastructure/persistence/migrations/migrate.js';
@@ -38,9 +39,14 @@ test(
       migrate(first),
       migrate(second),
     ]);
+    const migrationNames = (
+      await readdir(new URL('../../database/migrations/', import.meta.url))
+    )
+      .filter((name) => name.endsWith('.sql'))
+      .sort();
     assert.deepEqual(
-      migrationResults.map((result) => result.length).sort(),
-      [0, 1],
+      migrationResults.sort((a, b) => a.length - b.length),
+      [[], migrationNames],
     );
     assert.deepEqual(await migrate(first), []);
     const seedDate = new Date();
@@ -78,10 +84,10 @@ test(
         'UPDATE products SET available_quantity = $1 WHERE id = $2',
         [stock, 'product-1'],
       );
-      await first.query('UPDATE pickup_slots SET capacity = $1 WHERE id = $2', [
-        capacity,
-        input.pickupSlotId,
-      ]);
+      await first.query(
+        'UPDATE pickup_slots SET capacity = $1, max_capacity = $1 WHERE id = $2',
+        [capacity, input.pickupSlotId],
+      );
     };
     const state = async () => ({
       stock: (
@@ -109,7 +115,7 @@ test(
           passwordHash: 'test-hash',
         });
         assert.ok(
-          (await db.catalog.producers()).some(
+          (await db.producers.all()).some(
             (profile) => profile.id === account.id,
           ),
         );
@@ -210,12 +216,26 @@ test(
           { code: 'IDEMPOTENCY_CONFLICT' },
         );
         await first.query(
-          "UPDATE products SET price_amount = 99.00 WHERE id = 'product-1'",
+          "UPDATE products SET price_amount = 99.00, title = 'Produs redenumit', active = false WHERE id = 'product-1'",
         );
-        assert.equal(
-          (await db.orders.list(buyer))[0].items[0].priceAmount,
-          '35.00',
+        const historical = await services()[0].get(buyer, orders[0].id);
+        assert.deepEqual(historical, orders[0]);
+        assert.equal(historical.items[0].priceAmount, '35.00');
+        assert.equal(historical.totalAmount, '35.00');
+        assert.ok(
+          !('requestHash' in historical) && !('idempotencyKey' in historical),
         );
+        assert.deepEqual(
+          await services()[0].get(producer, orders[0].id),
+          historical,
+        );
+        const otherProducer = await db.users.findByEmail(
+          'producer2@dinsat.demo',
+        );
+        for (const account of [other, otherProducer])
+          await assert.rejects(services()[0].get(account, orders[0].id), {
+            code: 'ORDER_NOT_FOUND',
+          });
         assert.equal((await db.orders.list(other)).length, 0);
         assert.equal((await db.orders.list(producer)).length, 1);
         await assert.rejects(
@@ -229,6 +249,42 @@ test(
         );
         assert.deepEqual(await state(), { stock: 3, capacity: 3, orders: 1 });
         assert.equal((await db.orders.list(buyer))[0].status, 'cancelled');
+        await first.query(
+          "UPDATE products SET active = true WHERE id = 'product-1'",
+        );
+      },
+    );
+
+    await t.test(
+      'cancellation and preparation cannot both win against the same confirmed order',
+      async () => {
+        await reset(2, 2);
+        const [a, b] = services();
+        const order = await a.create(buyer, input, 'cancel-vs-preparing');
+        await assert.rejects(a.update(producer, order.id, 'ready'), {
+          code: 'INVALID_TRANSITION',
+        });
+        await a.update(producer, order.id, 'confirmed');
+        const result = await Promise.allSettled([
+          a.update(buyer, order.id, 'cancelled'),
+          b.update(producer, order.id, 'preparing'),
+        ]);
+        assert.equal(
+          result.filter(({ status }) => status === 'fulfilled').length,
+          1,
+        );
+        assert.equal(
+          result.find(({ status }) => status === 'rejected').reason.code,
+          'INVALID_TRANSITION',
+        );
+        const final = await a.get(buyer, order.id);
+        const remaining = final.status === 'cancelled' ? 2 : 1;
+        assert.ok(['cancelled', 'preparing'].includes(final.status));
+        assert.deepEqual(await state(), {
+          stock: remaining,
+          capacity: remaining,
+          orders: 1,
+        });
       },
     );
 
@@ -270,8 +326,53 @@ test(
     );
 
     await t.test(
+      'capacity updates preserve existing reservations and full slots stay unbookable',
+      async () => {
+        await reset(3, 3);
+        const [a, b] = services();
+        const firstOrder = await a.create(buyer, input, 'capacity-floor-first');
+        await b.create(other, input, 'capacity-floor-second');
+        await assert.rejects(
+          db.pickup.updateCapacity(producer.id, input.pickupSlotId, 1),
+          { code: 'PICKUP_CAPACITY_CONFLICT' },
+        );
+        const full = await db.pickup.updateCapacity(
+          producer.id,
+          input.pickupSlotId,
+          2,
+        );
+        assert.equal(full.capacity, 0);
+        assert.equal(full.maxCapacity, 2);
+        assert.ok(
+          !(await db.pickup.list(producer.id)).some(
+            (slot) => slot.id === full.id,
+          ),
+        );
+        assert.deepEqual(
+          (await db.pickup.list(producer.id, { includeFull: true })).find(
+            (slot) => slot.id === full.id,
+          ),
+          full,
+        );
+        await assert.rejects(a.create(buyer, input, 'capacity-floor-third'), {
+          code: 'SLOT_UNAVAILABLE',
+        });
+        await a.update(buyer, firstOrder.id, 'cancelled');
+        assert.equal(
+          (await db.pickup.list(producer.id)).find(
+            (slot) => slot.id === full.id,
+          ).capacity,
+          1,
+        );
+        assert.deepEqual(await state(), { stock: 2, capacity: 1, orders: 2 });
+      },
+    );
+
+    await t.test(
       'constraints reject invalid writes and refreshed seeds preserve pickup history',
       async () => {
+        await reset(3, 3);
+        await services()[0].create(buyer, input, 'preserve-pickup-history');
         await assert.rejects(
           first.query(
             "UPDATE products SET available_quantity = -1 WHERE id = 'product-1'",

@@ -4,6 +4,7 @@ import {
 } from '../../features/catalog/demoProducts.js';
 import { createPasswords } from '../../security/passwords.js';
 import { withTransaction } from '../transactions/withTransaction.js';
+import { findOrCreatePickupPoint } from '../../features/pickup/createPostgresPickup.js';
 
 // Explicit development command only. Re-running never resets inventory or orders.
 export async function seedDemo(pool, { now = new Date() } = {}) {
@@ -78,7 +79,12 @@ export async function seedDemo(pool, { now = new Date() } = {}) {
         ],
       );
     let pickupSlotsInserted = 0;
-    for (const producer of demoProducers)
+    for (const producer of demoProducers) {
+      const point = await findOrCreatePickupPoint(client, {
+        producerId: producer.id,
+        location: `Piața locală, ${producer.locality}`,
+        timeZone: 'Europe/Chisinau',
+      });
       for (let day = 1; day <= 3; day++) {
         const start = new Date(now);
         start.setUTCDate(start.getUTCDate() + day);
@@ -86,19 +92,21 @@ export async function seedDemo(pool, { now = new Date() } = {}) {
         const date = start.toISOString().slice(0, 10);
         const result = await client.query(
           `INSERT INTO pickup_slots
-          (id, producer_id, starts_at, ends_at, time_zone, location, capacity, max_capacity)
-          VALUES ($1,$2,$3,$4,$5,$6,10,10) ON CONFLICT DO NOTHING`,
+          (id, producer_id, starts_at, ends_at, time_zone, location, capacity, max_capacity, pickup_point_id)
+          VALUES ($1,$2,$3,$4,$5,$6,10,10,$7) ON CONFLICT DO NOTHING`,
           [
             `${producer.id}-slot-${date}`,
             producer.id,
             start,
             new Date(start.getTime() + 7200000),
-            'Europe/Chisinau',
-            `Piața locală, ${producer.locality}`,
+            point.timeZone,
+            point.location,
+            point.id,
           ],
         );
         pickupSlotsInserted += result.rowCount;
       }
+    }
     return {
       accounts: accounts.length,
       products: demoProducts.length,
