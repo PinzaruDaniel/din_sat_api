@@ -10,6 +10,7 @@ Comenzile din rădăcină încarcă `.env` al API-ului, `.env` din rădăcină, 
 
 ## Pornire cu PostgreSQL local
 
+
 Folosește Node.js 24 sau mai nou. Pornește PostgreSQL local și configurează `.env` al submodulului cu URL-ul local și un `SESSION_SECRET` persistent. Comenzile rulate direct în submodul nu încarcă `.env.local` din rădăcină:
 
 ```bash
